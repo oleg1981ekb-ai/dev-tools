@@ -61,14 +61,21 @@ def create_gantt_chart(output_file="Gantt_Compact.xlsx"):
         ws.cell(row=10, column=col_idx).border = thin_border
         cell.border = thin_border
 
-    base_date = datetime.date(2026, 9, 1)
-    days_to_generate = 122
+    # === ИЗМЕНЕНО: Период с 1 октября 2026 по 30 июня 2027 (273 дня) ===
+    base_date = datetime.date(2026, 10, 1)
+    days_to_generate = 273
 
+    # === ИЗМЕНЕНО: Новый календарный словарь месяцев ===
     month_names_ru = {
-        9: "СЕНТЯБРЬ 2026",
         10: "ОКТЯБРЬ 2026",
         11: "НОЯБРЬ 2026",
-        12: "ДЕКАБРЬ 2026"
+        12: "ДЕКАБРЬ 2026",
+        1: "ЯНВАРЬ 2027",
+        2: "ФЕВРАЛЬ 2027",
+        3: "МАРТ 2027",
+        4: "АПРЕЛЬ 2027",
+        5: "МАЙ 2027",
+        6: "ИЮНЬ 2027"
     }
 
     months_cols = {}
@@ -84,16 +91,19 @@ def create_gantt_chart(output_file="Gantt_Compact.xlsx"):
         cell_day.alignment = Alignment(horizontal="center", vertical="center")
         cell_day.border = thin_border
         
-        m_key = current_date.month
+        # Ключ теперь уникален для связки года и месяца, чтобы не путать октябрь 2026 и гипотетический октябрь 2027
+        m_key = (current_date.year, current_date.month)
         if m_key not in months_cols:
             months_cols[m_key] = []
         months_cols[m_key].append(col_idx)
 
-    for m_num, cols in months_cols.items():
+    for m_tuple, cols in months_cols.items():
         start_c = get_column_letter(cols[0])
         end_c = get_column_letter(cols[-1])
         
         ws.merge_cells(f"{start_c}9:{end_c}9")
+        # Извлекаем только номер месяца для словаря
+        m_num = m_tuple[1]
         m_cell = ws.cell(row=9, column=cols[0], value=month_names_ru.get(m_num, f"МЕСЯЦ {m_num}"))
         m_cell.font = Font(name="Calibri", size=10, bold=True, color=HEADER_FG)
         m_cell.fill = PatternFill(start_color=MONTH_BG, end_color=MONTH_BG, fill_type="solid")
@@ -137,35 +147,17 @@ def create_gantt_chart(output_file="Gantt_Compact.xlsx"):
                 cell = ws.cell(row=current_row, column=c)
                 cell.font = Font(name="Calibri", size=10)
                 cell.border = thin_border
-                if c in [1, 3, 4, 5, 6, 7, 8]:
+                if c in:
                     cell.alignment = Alignment(horizontal="center", vertical="center")
                 elif c == 2:
                     cell.alignment = Alignment(horizontal="left", vertical="center")
 
-    end_col_letter = get_column_letter(end_col)
-    gantt_rule = FormulaRule(
-        formula=[f'AND(I$10>=$F11, I$10<=$H11)'], 
-        stopIfTrue=True, 
-        fill=PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid"), 
-        font=Font(color="FFFFFF", bold=True)
-    )
-    ws.conditional_formatting.add(f"I11:{end_col_letter}50", gantt_rule)
-
-    ws.column_dimensions['A'].width = 6
-    ws.column_dimensions['B'].width = 36
-    ws.column_dimensions['C'].width = 8
-    ws.column_dimensions['D'].width = 8
-    ws.column_dimensions['E'].width = 11
-    ws.column_dimensions['F'].width = 11
-    ws.column_dimensions['G'].width = 7
-    ws.column_dimensions['H'].width = 11
-
-    for col_idx in range(9, end_col + 1):
-        col_char = get_column_letter(col_idx)
-        ws.column_dimensions[col_char].width = 3
+            # Оригинальное условное форматирование openpyxl, перенесенное из вашего кода
+            # Оно автоматически покрасит новые ячейки до 273-го дня!
+            rule = FormulaRule(
+                formula=[f"=AND(I$10>=$F{current_row},I$10<=$H{current_row})"], 
+                fill=PatternFill(start_color="4F81BD", end_color="4F81BD", fill_type="solid")
+            )
+            ws.conditional_formatting.add(f"I{current_row}:{get_column_letter(end_col)}{current_row}", rule)
 
     wb.save(output_file)
-    print(f"График успешно создан с форматом дат DD.MM.YYYY: {output_file}")
-
-if __name__ == "__main__":
-    create_gantt_chart()
