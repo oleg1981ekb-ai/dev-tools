@@ -61,11 +61,10 @@ def create_gantt_chart(output_file="Gantt_Compact.xlsx"):
         ws.cell(row=10, column=col_idx).border = thin_border
         cell.border = thin_border
 
-    # Период с 1 октября 2026 по 30 июня 2027 (273 дня)
+    # Календарь: Октябрь 2026 - Июнь 2027 (273 дня)
     base_date = datetime.date(2026, 10, 1)
     days_to_generate = 273
 
-    # Календарный словарь месяцев
     month_names_ru = {
         10: "ОКТЯБРЬ 2026",
         11: "НОЯБРЬ 2026",
@@ -145,8 +144,9 @@ def create_gantt_chart(output_file="Gantt_Compact.xlsx"):
                 cell = ws.cell(row=current_row, column=c)
                 cell.font = Font(name="Calibri", size=10)
                 cell.border = thin_border
-                # ИСПРАВЛЕНО: возвращены точные колонки для выравнивания
-                if c in:
+                
+                # Защищенный способ проверки колонок (1, 3, 4, 5, 6, 7, 8)
+                if str(c) in "1345678":
                     cell.alignment = Alignment(horizontal="center", vertical="center")
                 elif c == 2:
                     cell.alignment = Alignment(horizontal="left", vertical="center")
@@ -157,14 +157,12 @@ def create_gantt_chart(output_file="Gantt_Compact.xlsx"):
             )
             ws.conditional_formatting.add(f"I{current_row}:{get_column_letter(end_col)}{current_row}", rule)
 
-    # Автоматическая настройка ширины основных колонок
     ws.column_dimensions['A'].width = 5
     ws.column_dimensions['B'].width = 35
     ws.column_dimensions['C'].width = 10
     for col in ['D', 'E', 'F', 'G', 'H']:
         ws.column_dimensions[col].width = 11
 
-    # Компактное сужение ячеек календаря для удобного просмотра 9 месяцев
     for c in range(9, end_col + 1):
         ws.column_dimensions[get_column_letter(c)].width = 3.5
 
