@@ -145,6 +145,7 @@ def create_gantt_chart(output_file="Gantt_Compact.xlsx"):
                 cell = ws.cell(row=current_row, column=c)
                 cell.font = Font(name="Calibri", size=10)
                 cell.border = thin_border
+                # ИСПРАВЛЕНО: возвращены точные колонки для выравнивания
                 if c in:
                     cell.alignment = Alignment(horizontal="center", vertical="center")
                 elif c == 2:
@@ -155,5 +156,16 @@ def create_gantt_chart(output_file="Gantt_Compact.xlsx"):
                 fill=PatternFill(start_color="4F81BD", end_color="4F81BD", fill_type="solid")
             )
             ws.conditional_formatting.add(f"I{current_row}:{get_column_letter(end_col)}{current_row}", rule)
+
+    # Автоматическая настройка ширины основных колонок
+    ws.column_dimensions['A'].width = 5
+    ws.column_dimensions['B'].width = 35
+    ws.column_dimensions['C'].width = 10
+    for col in ['D', 'E', 'F', 'G', 'H']:
+        ws.column_dimensions[col].width = 11
+
+    # Компактное сужение ячеек календаря для удобного просмотра 9 месяцев
+    for c in range(9, end_col + 1):
+        ws.column_dimensions[get_column_letter(c)].width = 3.5
 
     wb.save(output_file)
