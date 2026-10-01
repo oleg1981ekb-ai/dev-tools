@@ -61,11 +61,11 @@ def create_gantt_chart(output_file="Gantt_Compact.xlsx"):
         ws.cell(row=10, column=col_idx).border = thin_border
         cell.border = thin_border
 
-    # === ИЗМЕНЕНО: Период с 1 октября 2026 по 30 июня 2027 (273 дня) ===
+    # Период с 1 октября 2026 по 30 июня 2027 (273 дня)
     base_date = datetime.date(2026, 10, 1)
     days_to_generate = 273
 
-    # === ИЗМЕНЕНО: Новый календарный словарь месяцев ===
+    # Календарный словарь месяцев
     month_names_ru = {
         10: "ОКТЯБРЬ 2026",
         11: "НОЯБРЬ 2026",
@@ -91,7 +91,6 @@ def create_gantt_chart(output_file="Gantt_Compact.xlsx"):
         cell_day.alignment = Alignment(horizontal="center", vertical="center")
         cell_day.border = thin_border
         
-        # Ключ теперь уникален для связки года и месяца, чтобы не путать октябрь 2026 и гипотетический октябрь 2027
         m_key = (current_date.year, current_date.month)
         if m_key not in months_cols:
             months_cols[m_key] = []
@@ -102,7 +101,6 @@ def create_gantt_chart(output_file="Gantt_Compact.xlsx"):
         end_c = get_column_letter(cols[-1])
         
         ws.merge_cells(f"{start_c}9:{end_c}9")
-        # Извлекаем только номер месяца для словаря
         m_num = m_tuple[1]
         m_cell = ws.cell(row=9, column=cols[0], value=month_names_ru.get(m_num, f"МЕСЯЦ {m_num}"))
         m_cell.font = Font(name="Calibri", size=10, bold=True, color=HEADER_FG)
@@ -152,8 +150,6 @@ def create_gantt_chart(output_file="Gantt_Compact.xlsx"):
                 elif c == 2:
                     cell.alignment = Alignment(horizontal="left", vertical="center")
 
-            # Оригинальное условное форматирование openpyxl, перенесенное из вашего кода
-            # Оно автоматически покрасит новые ячейки до 273-го дня!
             rule = FormulaRule(
                 formula=[f"=AND(I$10>=$F{current_row},I$10<=$H{current_row})"], 
                 fill=PatternFill(start_color="4F81BD", end_color="4F81BD", fill_type="solid")
