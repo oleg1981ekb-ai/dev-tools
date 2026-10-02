@@ -115,19 +115,15 @@ def input_tasks_interactively():
         print(f"✅ Работа добавлена. Расчетное окончание: {last_end_date.strftime('%Y-%m-%d')}\n")
         
     if new_tasks:
-        confirm = input("\n💾 Сохранить введенные работы и перезаписать tasks.json? (д/н): ").strip().lower()
-        if confirm == 'д':
-            save_tasks(new_tasks)
-            print("💾 Файл tasks.json успешно обновлен!")
-        else:
-            print("⚠ Изменения не сохранены.")
+        # ИЗМЕНЕНО: Больше никаких лишних вопросов, сохраняем сразу!
+        save_tasks(new_tasks)
+        print("💾 Автосохранение: Файл tasks.json успешно обновлен вашими данными!")
 def create_gantt_chart(output_file="Gantt_Compact.xlsx"):
     ans = input("Хотите ввести новый список строительных работ в терминале? (д/н) [Enter для н]: ").strip().lower()
     if ans == 'д':
         input_tasks_interactively()
 
     print("\n--- НАСТРОЙКА ДИАПАЗОНА ДИАГРАММЫ ГАНТА ---")
-    # Используем обновленную функцию ввода дат с поддержкой безопасного выхода
     base_date = get_date_input_with_exit("Введите дату НАЧАЛА графика", datetime.date(2026, 10, 1))
     if base_date == "exit":
         print("🛑 Выход из программы.")
@@ -153,7 +149,7 @@ def create_gantt_chart(output_file="Gantt_Compact.xlsx"):
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "График компактный"
-    ws.views.sheetView[0].showGridLines = True
+    ws.views.sheetView.showGridLines = True
 
     HEADER_BG = "1F4E78"
     MONTH_BG = "2F5597"
@@ -225,13 +221,13 @@ def create_gantt_chart(output_file="Gantt_Compact.xlsx"):
         months_cols[m_key].append(col_idx)
 
     for m_tuple, cols in months_cols.items():
-        start_c = get_column_letter(cols[0])
+        start_c = get_column_letter(cols)
         end_c = get_column_letter(cols[-1])
         
         ws.merge_cells(f"{start_c}9:{end_c}9")
         y_val, m_val = m_tuple
         m_text = f"{month_names_ru[m_val]} {y_val}"
-        m_cell = ws.cell(row=9, column=cols[0], value=m_text)
+        m_cell = ws.cell(row=9, column=cols, value=m_text)
         m_cell.font = Font(name="Calibri", size=10, bold=True, color=HEADER_FG)
         m_cell.fill = PatternFill(start_color=MONTH_BG, end_color=MONTH_BG, fill_type="solid")
         m_cell.alignment = Alignment(horizontal="center", vertical="center")
