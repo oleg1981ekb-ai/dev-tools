@@ -151,7 +151,6 @@ def create_gantt_chart(output_file="Gantt_Compact.xlsx"):
             
             ws.cell(row=current_row, column=7, value=row_item.get("days", 1))
             
-            # Окончание считается автоматически формулой Excel
             c_end = ws.cell(row=current_row, column=8, value=f"=F{current_row}+G{current_row}-1")
             c_end.number_format = 'DD.MM'
             
@@ -160,6 +159,7 @@ def create_gantt_chart(output_file="Gantt_Compact.xlsx"):
                 cell.font = Font(name="Calibri", size=10)
                 cell.border = thin_border
                 
+                # Исправленная безопасная текстовая проверка колонок (1, 3, 4, 5, 6, 7, 8)
                 if str(c) in "1345678":
                     cell.alignment = Alignment(horizontal="center", vertical="center")
                 elif c == 2:
