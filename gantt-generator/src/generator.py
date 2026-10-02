@@ -115,7 +115,6 @@ def input_tasks_interactively():
         print(f"✅ Работа добавлена. Расчетное окончание: {last_end_date.strftime('%Y-%m-%d')}\n")
         
     if new_tasks:
-        # ИЗМЕНЕНО: Больше никаких лишних вопросов, сохраняем сразу!
         save_tasks(new_tasks)
         print("💾 Автосохранение: Файл tasks.json успешно обновлен вашими данными!")
 def create_gantt_chart(output_file="Gantt_Compact.xlsx"):
@@ -149,7 +148,9 @@ def create_gantt_chart(output_file="Gantt_Compact.xlsx"):
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "График компактный"
-    ws.views.sheetView.showGridLines = True
+    
+    # ИСПРАВЛЕНО: Безопасный кроссплатформенный синтаксис для отображения сетки Excel
+    ws.views.sheetView[0].showGridLines = True
 
     HEADER_BG = "1F4E78"
     MONTH_BG = "2F5597"
