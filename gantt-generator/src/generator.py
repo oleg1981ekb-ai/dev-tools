@@ -16,9 +16,11 @@ def save_tasks(tasks, json_path="tasks.json"):
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(tasks, f, ensure_ascii=False, indent=2)
 
-def get_date_input(prompt, default_date):
+def get_date_input_with_exit(prompt, default_date):
     while True:
         user_input = input(f"{prompt} (ГГГГ-ММ-СС) [Enter для {default_date}]: ").strip()
+        if user_input.lower() in ['выход', 'exit', 'quit']:
+            return "exit"
         if not user_input:
             return default_date
         try:
@@ -44,7 +46,10 @@ def input_tasks_interactively():
         if name.lower() in ['выход', 'exit', 'quit']:
             break
             
-        is_section = input("Это название РАЗДЕЛА? (д/н) [по умолчанию н]: ").strip().lower() == 'д'
+        is_section_input = input("Это название РАЗДЕЛА? (д/н) [по умолчанию н]: ").strip()
+        if is_section_input.lower() in ['выход', 'exit', 'quit']:
+            break
+        is_section = is_section_input.lower() == 'д'
         
         if is_section:
             new_tasks.append({
@@ -56,13 +61,20 @@ def input_tasks_interactively():
             continue
             
         unit = input("3. Единица измерения (например, м3, м2, т): ").strip()
+        if unit.lower() in ['выход', 'exit', 'quit']:
+            break
+            
         qty_input = input("4. Количество (объем): ").strip()
+        if qty_input.lower() in ['выход', 'exit', 'quit']:
+            break
         try:
             qty = float(qty_input) if '.' in qty_input else int(qty_input)
         except ValueError:
             qty = qty_input
             
         crew_input = input("5. Количество человек в бригаде: ").strip()
+        if crew_input.lower() in ['выход', 'exit', 'quit']:
+            break
         crew = int(crew_input) if crew_input.isdigit() else 1
         
         if last_end_date:
@@ -70,14 +82,23 @@ def input_tasks_interactively():
         else:
             default_start = datetime.date(2026, 10, 1)
             
-        start_date = get_date_input("6. Дата начала работы", default_start)
-        
+        start_date = get_date_input_with_exit("6. Дата начала работы", default_start)
+        if start_date == "exit":
+            break
+            
+        days_exit = False
         while True:
             days_input = input("7. Длительность работы (в днях): ").strip()
+            if days_input.lower() in ['выход', 'exit', 'quit']:
+                days_exit = True
+                break
             if days_input.isdigit() and int(days_input) > 0:
                 days = int(days_input)
                 break
             print("❌ Длительность должна быть целым числом больше 0!")
+            
+        if days_exit:
+            break
             
         last_end_date = start_date + datetime.timedelta(days=days - 1)
         
@@ -94,7 +115,7 @@ def input_tasks_interactively():
         print(f"✅ Работа добавлена. Расчетное окончание: {last_end_date.strftime('%Y-%m-%d')}\n")
         
     if new_tasks:
-        confirm = input("Сохранить введенные работы и перезаписать tasks.json? (д/н): ").strip().lower()
+        confirm = input("\n💾 Сохранить введенные работы и перезаписать tasks.json? (д/н): ").strip().lower()
         if confirm == 'д':
             save_tasks(new_tasks)
             print("💾 Файл tasks.json успешно обновлен!")
@@ -106,8 +127,16 @@ def create_gantt_chart(output_file="Gantt_Compact.xlsx"):
         input_tasks_interactively()
 
     print("\n--- НАСТРОЙКА ДИАПАЗОНА ДИАГРАММЫ ГАНТА ---")
-    base_date = get_date_input("Введите дату НАЧАЛА графика", datetime.date(2026, 10, 1))
-    end_date = get_date_input("Введите дату ОКОНЧАНИЯ графика", datetime.date(2027, 6, 30))
+    # Используем обновленную функцию ввода дат с поддержкой безопасного выхода
+    base_date = get_date_input_with_exit("Введите дату НАЧАЛА графика", datetime.date(2026, 10, 1))
+    if base_date == "exit":
+        print("🛑 Выход из программы.")
+        return
+
+    end_date = get_date_input_with_exit("Введите дату ОКОНЧАНИЯ графика", datetime.date(2027, 6, 30))
+    if end_date == "exit":
+        print("🛑 Выход из программы.")
+        return
     
     if end_date < base_date:
         print("⚠ Дата окончания не может быть раньше даты начала! Поменял их местами.")
