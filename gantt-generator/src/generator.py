@@ -4,23 +4,107 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.formatting.rule import FormulaRule
 from openpyxl.utils import get_column_letter
 import datetime
+import os
 
 def load_tasks(json_path="tasks.json"):
+    if not os.path.exists(json_path):
+        return []
     with open(json_path, "r", encoding="utf-8") as f:
         return json.load(f)
 
+def save_tasks(tasks, json_path="tasks.json"):
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(tasks, f, ensure_ascii=False, indent=2)
+
 def get_date_input(prompt, default_date):
     while True:
-        user_input = input(f"{prompt} (ГГГГ-ММ-СС) [Нажмите Enter для {default_date}]: ").strip()
+        user_input = input(f"{prompt} (ГГГГ-ММ-СС) [Enter для {default_date}]: ").strip()
         if not user_input:
             return default_date
         try:
             return datetime.datetime.strptime(user_input, "%Y-%m-%d").date()
         except ValueError:
-            print("❌ Неверный формат! Пожалуйста, используйте ГГГГ-ММ-СС (например, 2026-10-01).")
+            print("❌ Неверный формат! Используйте ГГГГ-ММ-СС (например, 2026-10-01).")
 
+def input_tasks_interactively():
+    print("\n" + "="*50)
+    print("      РЕЖИМ ПОСЛЕДОВАТЕЛЬНОГО ВВОДА РАБОТ")
+    print("="*50)
+    print("Введите 'выход' в любой момент, чтобы завершить ввод.\n")
+    
+    new_tasks = []
+    last_end_date = None
+    
+    while True:
+        num = input("1. Введите номер пункта (например, 1.1 или 2): ").strip()
+        if num.lower() in ['выход', 'exit', 'quit']:
+            break
+            
+        name = input("2. Введите наименование (или название раздела): ").strip()
+        if name.lower() in ['выход', 'exit', 'quit']:
+            break
+            
+        is_section = input("Это название РАЗДЕЛА? (д/н) [по умолчанию н]: ").strip().lower() == 'д'
+        
+        if is_section:
+            new_tasks.append({
+                "type": "section",
+                "num": num,
+                "name": name
+            })
+            print("✅ Раздел добавлен.\n")
+            continue
+            
+        unit = input("3. Единица измерения (например, м3, м2, т): ").strip()
+        qty_input = input("4. Количество (объем): ").strip()
+        try:
+            qty = float(qty_input) if '.' in qty_input else int(qty_input)
+        except ValueError:
+            qty = qty_input
+            
+        crew_input = input("5. Количество человек в бригаде: ").strip()
+        crew = int(crew_input) if crew_input.isdigit() else 1
+        
+        if last_end_date:
+            default_start = last_end_date + datetime.timedelta(days=1)
+        else:
+            default_start = datetime.date(2026, 10, 1)
+            
+        start_date = get_date_input("6. Дата начала работы", default_start)
+        
+        while True:
+            days_input = input("7. Длительность работы (в днях): ").strip()
+            if days_input.isdigit() and int(days_input) > 0:
+                days = int(days_input)
+                break
+            print("❌ Длительность должна быть целым числом больше 0!")
+            
+        last_end_date = start_date + datetime.timedelta(days=days - 1)
+        
+        new_tasks.append({
+            "type": "task",
+            "num": num,
+            "name": name,
+            "unit": unit,
+            "qty": qty,
+            "crew": crew,
+            "start": start_date.strftime("%Y-%m-%d"),
+            "days": days
+        })
+        print(f"✅ Работа добавлена. Расчетное окончание: {last_end_date.strftime('%Y-%m-%d')}\n")
+        
+    if new_tasks:
+        confirm = input("Сохранить введенные работы и перезаписать tasks.json? (д/н): ").strip().lower()
+        if confirm == 'д':
+            save_tasks(new_tasks)
+            print("💾 Файл tasks.json успешно обновлен!")
+        else:
+            print("⚠ Изменения не сохранены.")
 def create_gantt_chart(output_file="Gantt_Compact.xlsx"):
-    # Интерактивный ввод диапазона дат из терминала
+    ans = input("Хотите ввести новый список строительных работ в терминале? (д/н) [Enter для н]: ").strip().lower()
+    if ans == 'д':
+        input_tasks_interactively()
+
     print("\n--- НАСТРОЙКА ДИАПАЗОНА ДИАГРАММЫ ГАНТА ---")
     base_date = get_date_input("Введите дату НАЧАЛА графика", datetime.date(2026, 10, 1))
     end_date = get_date_input("Введите дату ОКОНЧАНИЯ графика", datetime.date(2027, 6, 30))
@@ -29,11 +113,14 @@ def create_gantt_chart(output_file="Gantt_Compact.xlsx"):
         print("⚠ Дата окончания не может быть раньше даты начала! Поменял их местами.")
         base_date, end_date = end_date, base_date
 
-    # Автоматический расчет количества дней
     days_to_generate = (end_date - base_date).days + 1
     print(f"📊 Будет сгенерировано дней в календаре: {days_to_generate}\n")
 
     tasks = load_tasks()
+    if not tasks:
+        print("❌ Ошибка: Список задач пуст! Заполните tasks.json.")
+        return
+
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "График компактный"
@@ -151,7 +238,8 @@ def create_gantt_chart(output_file="Gantt_Compact.xlsx"):
             
             ws.cell(row=current_row, column=7, value=row_item.get("days", 1))
             
-            c_end = ws.cell(row=current_row, column=8, value=f"=F{current_row}+G{current_row}-1")
+            formula_end = f"=F{current_row}+G{current_row}-1"
+            c_end = ws.cell(row=current_row, column=8, value=formula_end)
             c_end.number_format = 'DD.MM'
             
             for c in range(1, end_col + 1):
@@ -159,17 +247,18 @@ def create_gantt_chart(output_file="Gantt_Compact.xlsx"):
                 cell.font = Font(name="Calibri", size=10)
                 cell.border = thin_border
                 
-                # Исправленная безопасная текстовая проверка колонок (1, 3, 4, 5, 6, 7, 8)
                 if str(c) in "1345678":
                     cell.alignment = Alignment(horizontal="center", vertical="center")
                 elif c == 2:
                     cell.alignment = Alignment(horizontal="left", vertical="center")
 
+            rule_formula = f"=AND(I$10>=$F{current_row},I$10<=$H{current_row})"
             rule = FormulaRule(
-                formula=[f"=AND(I$10>=$F{current_row},I$10<=$H{current_row})"], 
+                formula=[rule_formula], 
                 fill=PatternFill(start_color="4F81BD", end_color="4F81BD", fill_type="solid")
             )
-            ws.conditional_formatting.add(f"I{current_row}:{get_column_letter(end_col)}{current_row}", rule)
+            gantt_range = f"I{current_row}:{get_column_letter(end_col)}{current_row}"
+            ws.conditional_formatting.add(gantt_range, rule)
 
     ws.column_dimensions['A'].width = 5
     ws.column_dimensions['B'].width = 35
