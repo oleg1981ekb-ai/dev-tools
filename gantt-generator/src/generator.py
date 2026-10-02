@@ -148,9 +148,7 @@ def create_gantt_chart(output_file="Gantt_Compact.xlsx"):
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "График компактный"
-    
-    # ИСПРАВЛЕНО: Безопасный кроссплатформенный синтаксис для отображения сетки Excel
-    ws.views.sheetView[0].showGridLines = True
+    ws.views.sheetView.showGridLines = True
 
     HEADER_BG = "1F4E78"
     MONTH_BG = "2F5597"
@@ -222,13 +220,14 @@ def create_gantt_chart(output_file="Gantt_Compact.xlsx"):
         months_cols[m_key].append(col_idx)
 
     for m_tuple, cols in months_cols.items():
-        start_c = get_column_letter(cols)
+        # ИСПРАВЛЕНО: берем конкретные индексы колонок из списка
+        start_c = get_column_letter(cols[0])
         end_c = get_column_letter(cols[-1])
         
         ws.merge_cells(f"{start_c}9:{end_c}9")
         y_val, m_val = m_tuple
         m_text = f"{month_names_ru[m_val]} {y_val}"
-        m_cell = ws.cell(row=9, column=cols, value=m_text)
+        m_cell = ws.cell(row=9, column=cols[0], value=m_text)
         m_cell.font = Font(name="Calibri", size=10, bold=True, color=HEADER_FG)
         m_cell.fill = PatternFill(start_color=MONTH_BG, end_color=MONTH_BG, fill_type="solid")
         m_cell.alignment = Alignment(horizontal="center", vertical="center")
