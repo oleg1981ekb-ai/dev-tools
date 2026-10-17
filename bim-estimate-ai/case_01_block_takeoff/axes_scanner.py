@@ -9,7 +9,9 @@
 Запуск: .venv/bin/python case_01_block_takeoff/axes_scanner.py [путь/к.pdf]
 """
 import sys
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 import pymupdf as fitz
 
@@ -179,6 +181,77 @@ def find_circled_axes(page, words):
     return sorted(result)
 
 
+@dataclass
+class Axis:
+    """Одна descuberta ось чертежа."""
+    value: int            # номер оси (1, 2, 3 …)
+    x: float              # координата X центра, pt
+    y: float              # координата Y центра, pt
+    axis: Literal['x', 'y', '?']   # 'x' = горизонтальный ряд (значения растут по X), 'y' = вертикальный
+    source: Literal['row', 'circle', 'both']  # где найдена
+    confidence: Literal['high', 'medium', 'low']
+
+
+def _match_circled(x: float, y: float, v: int, circled_raw, tol: float = 3.0) -> int | None:
+    """Возвращает индекс кружка оси с таким же значением в пределах tol pt, или None."""
+    for i, (cx, cy, cv, _d) in enumerate(circled_raw):
+        if cv == v and abs(cx - x) <= tol and abs(cy - y) <= tol:
+            return i
+    return None
+
+
+def detect_axes(page, words):
+    """Объединённое детектирование цифровых осей: ряды чисел + кружки.
+
+    Возвращает список Axis, отсортированных по value. Каждая оценка помечается
+    источником (где найдена) и уровнем уверенности:
+
+    * 'both'  / 'high'   — ось и в ряде чисел, и внутри кружка (эталон)
+    * 'row'  / 'medium'  — только в ряде чисел (как ось «1» на некоторых чертежах)
+    * 'circle' / 'low'   — только в кружке, не попала ни в один ряд
+    """
+    circled_raw = find_circled_axes(page, words)          # [(x, y, value, d), …]
+
+    rows = find_number_rows(words)    # [(main_y, [(x, value), …]), …]
+    cols = find_number_columns(words)  # [(main_x, [(y, value), …]), …]
+
+    result: list[Axis] = []
+    matched_circled_idx: set[int] = set()
+
+    # Горизонтальные ряды (ось X)
+    for main_y, pairs in rows:
+        for x, v in pairs:
+            ci = _match_circled(x, main_y, v, circled_raw)
+            in_circle = ci is not None
+            src = 'both' if in_circle else 'row'
+            conf = 'high' if src == 'both' else 'medium'
+            result.append(Axis(value=v, x=x, y=main_y, axis='x',
+                               source=src, confidence=conf))
+            if in_circle and ci is not None:
+                matched_circled_idx.add(ci)
+
+    # Вертикальные ряды (ось Y)
+    for main_x, pairs in cols:
+        for y, v in pairs:
+            ci = _match_circled(main_x, y, v, circled_raw)
+            in_circle = ci is not None
+            src = 'both' if in_circle else 'row'
+            conf = 'high' if src == 'both' else 'medium'
+            result.append(Axis(value=v, x=main_x, y=y, axis='y',
+                               source=src, confidence=conf))
+            if in_circle and ci is not None:
+                matched_circled_idx.add(ci)
+
+    # Оси только в кружках (не попали ни в один ряд)
+    for i, (x, y, v, d) in enumerate(circled_raw):
+        if i not in matched_circled_idx:
+            result.append(Axis(value=v, x=x, y=y, axis='?',
+                               source='circle', confidence='low'))
+
+    result.sort(key=lambda a: (a.axis, a.value))
+    return result
+
+
 def main():
     pdf_path = find_pdf()
     print(f"🔎 ФАЗА 0 v2: структурный поиск осей — {pdf_path.name}\n")
@@ -195,26 +268,16 @@ def main():
         for x, y, sym in letters:
             print(f"     '{sym}'  x={x:7.1f}  y={y:7.1f}")
 
-        rows = find_number_rows(words)
-        print(f"\n  ➖ Горизонтальные ряды чисел-осей: {len(rows)}")
-        for y, pairs in rows:
-            vals = ", ".join(str(v) for _, v in pairs)
-            xs = ", ".join(f"{x:.0f}" for x, _ in pairs)
-            print(f"     y={y:7.1f}  осей: {len(pairs)}  значения: {vals}")
-            print(f"        x: {xs}")
-
-        cols = find_number_columns(words)
-        print(f"\n  ➕ Вертикальные ряды чисел-осей: {len(cols)}")
-        for x, pairs in cols:
-            vals = ", ".join(str(v) for _, v in pairs)
-            ys = ", ".join(f"{y:.0f}" for y, _ in pairs)
-            print(f"     x={x:7.1f}  осей: {len(pairs)}  значения: {vals}")
-            print(f"        y: {ys}")
-
-        circled = find_circled_axes(page, words)
-        print(f"\n  ⭕ Оси в кружках (эталон): {len(circled)}")
-        for x, y, v, d in circled:
-            print(f"     ось {v:>2}  x={x:7.1f}  y={y:7.1f}  кружок d={d}")
+        axes = detect_axes(page, words)
+        print(f"\n  🎯 Все цифровые оси: {len(axes)}")
+        high = [a for a in axes if a.confidence == 'high']
+        med = [a for a in axes if a.confidence == 'medium']
+        low = [a for a in axes if a.confidence == 'low']
+        print(f"     high={len(high)}  medium={len(med)}  low={len(low)}")
+        for a in axes:
+            mark = {'high': '✅', 'medium': '⚠️ ', 'low': '❓'}[a.confidence]
+            print(f"     {mark} ось {a.value:>2}  x={a.x:7.1f}  y={a.y:7.1f}  "
+                  f"axis={a.axis}  source={a.source:7}  conf={a.confidence}")
 
         big = [(cx, cy, int(w)) for cx, cy, w in words if w.isdigit() and len(w) >= 3]
         print(f"\n  📏 Трёхзначные+ числа (кандидаты в размеры): {len(big)}")
