@@ -1,5 +1,6 @@
 import fitz
 import re
+import sys
 import pandas as pd
 import os
 
@@ -122,6 +123,21 @@ def professional_split_takeoff(pdf_path, output_csv):
     print("=======================================================")
 
 if __name__ == "__main__":
-    PDF_PATH = "/Users/test/Desktop/dev-tools/bim-estimate-ai/case_01_block_takeoff/data/44-П_24-АР_изм.3_04.09.26-12.pdf"
-    OUTPUT_CSV = "/Users/test/Desktop/dev-tools/bim-estimate-ai/case_01_block_takeoff/data/estimated_materials.csv"
-    professional_split_takeoff(PDF_PATH, OUTPUT_CSV)
+    # Пути строятся от расположения файла — без абсолютных захардкоженных путей
+    from pathlib import Path
+
+    data_dir = Path(__file__).resolve().parent / "data"
+    output_csv = data_dir / "estimated_materials.csv"
+
+    # PDF: аргумент CLI (python extract_walls.py путь/к/файлу.pdf) или первый *.pdf в data/
+    if len(sys.argv) > 1:
+        pdf_path = Path(sys.argv[1]).expanduser()
+    else:
+        pdfs = sorted(data_dir.glob("*.pdf")) if data_dir.exists() else []
+        if not pdfs:
+            print(f"❌ В папке {data_dir} нет PDF-чертежей.")
+            print("   Положите PDF в эту папку или укажите путь аргументом: python extract_walls.py /path/to/drawing.pdf")
+            sys.exit(1)
+        pdf_path = pdfs[0]
+
+    professional_split_takeoff(str(pdf_path), str(output_csv))
