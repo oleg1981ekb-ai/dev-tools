@@ -1,0 +1,13 @@
+# macOS
+.DS_Store
+
+# LibreOffice lock files
+.~lock.*
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Archives
+temp.zip
