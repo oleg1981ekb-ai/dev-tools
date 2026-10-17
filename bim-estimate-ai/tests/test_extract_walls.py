@@ -12,6 +12,7 @@ from extract_walls import (
     collect_sizes,
     split_by_type,
     calc_volumes,
+    build_report,
 )
 
 
@@ -114,6 +115,53 @@ def test_calc_volumes_zero_length():
 def test_calc_volumes_custom_thickness():
     pure, _ = calc_volumes(10.0, thickness=0.3, height=3.0)
     assert pure == pytest.approx(9.0)
+
+
+# ========================= build_report =========================
+
+def test_build_report_all_values():
+    rows = build_report([0.6, 37.4], [49.9], height=3.4)
+    t1, t2 = rows
+
+    assert t1["Konstrukciya"] == "Narus_Stena_Tip_1"
+    assert t1["Kolichestvo_razmerov"] == 2
+    assert t1["Dlina_m"] == 38.0
+    assert t1["Ploshad_m2"] == round(38.0 * 3.4, 2)              # 129.2
+    assert t1["Tolshina_m"] == THICKNESS
+    assert t1["Volume_m3"] == round(38.0 * THICKNESS * 3.4, 2)
+    assert t1["Waste_factor"] == WASTE_FACTOR
+    # строгая связка: чистый + запас = с запасом
+    assert round(t1["Volume_m3"] + t1["Zapas_m3"], 2) == t1["Volume_with_waste_m3"]
+
+    assert t2["Konstrukciya"] == "Narus_Stena_Tip_2"
+    assert t2["Dlina_m"] == 49.9
+
+
+def test_build_report_reference_from_csv():
+    """Эталон: значения CSV (38.06 / 49.90 м при высоте 3.4) сохраняются."""
+    rows = build_report([38.06], [49.90], height=3.4)
+    t1, t2 = rows
+    assert t1["Dlina_m"] == 38.06 and t2["Dlina_m"] == 49.90
+    assert t1["Volume_with_waste_m3"] == round(38.06 * 0.2 * 3.4 * 1.05, 2)   # 27.17
+    assert t2["Volume_with_waste_m3"] == round(49.90 * 0.2 * 3.4 * 1.05, 2)   # 35.63
+
+
+def test_build_report_empty_types():
+    rows = build_report([], [], height=2.8)
+    for row in rows:
+        assert row["Dlina_m"] == 0.0
+        assert row["Ploshad_m2"] == 0.0
+        assert row["Volume_m3"] == 0.0
+        assert row["Volume_with_waste_m3"] == 0.0
+        assert row["Kolichestvo_razmerov"] == 0
+
+
+def test_build_report_custom_params():
+    rows = build_report([10.0], [], height=3.0, thickness=0.3, waste_factor=1.10)
+    t1 = rows[0]
+    assert t1["Volume_m3"] == 9.0            # 10 × 0.3 × 3.0
+    assert t1["Volume_with_waste_m3"] == 9.9  # +10%
+    assert t1["Zapas_m3"] == 0.9
 
 
 # ========================= Регрессия на реальном чертеже =========================
