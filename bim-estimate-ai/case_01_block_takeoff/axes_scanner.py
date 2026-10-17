@@ -1,25 +1,21 @@
-"""Фаза 0: разведка координат текста на чертеже.
+"""Фаза 0 (v2): разведка координат текста на чертеже.
 
-Ставит три задачи:
-1. Найти метки осей (буквы сверху/снизу, цифры слева/справа) и их координаты.
-2. Показать распределение подписей размеров (где живут числа).
-3. Найти блоки экспликации перегородок (Тип N + толщина).
+Ключевое отличие от v1: цифровые оси ищутся не «по краям листа»,
+а структурно — как РЯД из не менее MIN_AXIS_COUNT чисел, выстроенных
+по одной линии (общая x или общая y в пределах tol) и возрастающих
+монотонно по координате. Это отсекает таблицы, размеры и случайные
+числа: им такой закономерности не свойственна.
 
 Запуск: .venv/bin/python case_01_block_takeoff/axes_scanner.py [путь/к.pdf]
-Вывод: отчёт в консоль (без записи файлов — это инструмент разведки).
 """
 import sys
 from pathlib import Path
-from collections import defaultdict
 
 import pymupdf as fitz
 
-# Множества осевых меток (по чертежу: оси А..Л и 1..11)
-AXIS_LETTERS = set("АБВГДЕЖИКЛМН")
-AXIS_DIGITS = set("0123456789")
-
-# Полосы листа, где традиционно стоят подписи осей (% от размера листа)
-EDGE_PCT = 0.15
+AXIS_LETTERS = set("АБВГДЕЖИКЛМН")   # буквенные метки осей (по чертежу А..Л)
+MIN_AXIS_COUNT = 5                    # минимум чисел в ряду, чтобы считать рядом осей
+LINE_TOL = 12.0                       # допуск «в одной линии», pt
 
 
 def find_pdf():
@@ -37,118 +33,201 @@ def find_pdf():
     return pdfs[0]
 
 
-def is_edge_zone(x, y, rect, edge_pct=EDGE_PCT):
-    """True, если точка в краевой полосе листа (где живут метки осей)."""
-    w, h = rect.width, rect.height
-    return (x < w * edge_pct or x > w * (1 - edge_pct)
-            or y < h * edge_pct or y > h * (1 - edge_pct))
+def collect_words(page):
+    """Все слова с центрами: [(cx, cy, word), ...]."""
+    out = []
+    for x0, y0, x1, y1, word, *_ in page.get_text("words"):
+        out.append(((x0 + x1) / 2, (y0 + y1) / 2, word))
+    return out
 
 
-def scan_page(page):
-    """Собирает метки осей, числа-размеры и ключевые слова одной страницы."""
-    rect = page.rect
-    words = page.get_text("words")  # (x0, y0, x1, y1, word, block, line, no)
-    total = len(words)
+def find_axis_letters(words):
+    """Буквенные оси: одиночная буква из AXIS_LETTERS → (x, y, символ).
 
-    axis_letters_top, axis_letters_bottom = [], []
-    axis_digits_left, axis_digits_right = [], []
-    numbers = []          # числа-кандидаты в размеры (не осевые метки)
-    keywords = []         # перегородки/типы
-
-    for x0, y0, x1, y1, word, *_ in words:
-        cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
-        in_edge = is_edge_zone(cx, cy, rect)
-
-        # Метки осей: ОДИН символ в краевой зоне
-        if in_edge and len(word) == 1:
-            if word in AXIS_LETTERS:
-                rec = (round(cx, 1), round(cy, 1), word)
-                (axis_letters_top if cy < rect.height / 2 else axis_letters_bottom).append(rec)
-                continue
-            if word in AXIS_DIGITS:
-                rec = (round(cx, 1), round(cy, 1), word)
-                (axis_digits_left if cx < rect.width / 2 else axis_digits_right).append(rec)
-                continue
-
-        # Числа-размеры (длина >= 2 цифр), в т.ч. в краевой зоне
-        if word.isdigit() and len(word) >= 2:
-            numbers.append((round(cx, 1), round(cy, 1), int(word)))
-            continue
-
-        # Ключевые слова экспликации
-        low = word.lower().strip(".,:;")
-        if low in ("перегородка", "перегородки", "зашивка", "зашивки",
-                   "наружная", "стена", "стены") or word in ("Тип", "типа"):
-            keywords.append((round(cx, 1), round(cy, 1), word))
-
-    return {
-        "page_size": (round(rect.width, 1), round(rect.height, 1)),
-        "total_words": total,
-        "letters_top": axis_letters_top,
-        "letters_bottom": axis_letters_bottom,
-        "digits_left": axis_digits_left,
-        "digits_right": axis_digits_right,
-        "numbers": numbers,
-        "keywords": keywords,
-    }
-
-
-def cluster(values, tol=8.0):
-    """Схлопывает повторы (оси подписаны 2 раза): близкие координаты → один кластер.
-
-    values: список (x, y, символ). Возвращает (x, y, символы, встреч).
+    Метки дублируются по краям листа — схлопываем близкие (8 pt).
     """
-    if not values:
-        return []
-    values = sorted(values)
-    out, group = [], [values[0]]
-    for v in values[1:]:
-        if abs(v[0] - group[-1][0]) <= tol and abs(v[1] - group[-1][1]) <= tol:
-            group.append(v)
+    raw = [(cx, cy, w) for cx, cy, w in words
+           if len(w) == 1 and w in AXIS_LETTERS]
+    raw.sort()
+    clusters = []
+    for cx, cy, w in raw:
+        for c in clusters:
+            if abs(c[-1][0] - cx) < 8 and abs(c[-1][1] - cy) < 8:
+                c.append((cx, cy, w))
+                break
         else:
-            out.append(group)
-            group = [v]
-    out.append(group)
-    return [(round(sum(p[0] for p in g) / len(g), 1),
-             round(sum(p[1] for p in g) / len(g), 1),
-             "".join(sorted({p[2] for p in g})), len(g)) for g in out]
+            clusters.append([(cx, cy, w)])
+    return [(round(sum(p[0] for p in c) / len(c), 1),
+             round(sum(p[1] for p in c) / len(c), 1),
+             "".join(sorted({p[2] for p in c}))) for c in clusters]
+
+
+def _group_lines(items, key_main, key_cross, tol):
+    """Группирует элементы по главной координате с допуском tol."""
+    items = sorted(items, key=lambda t: (t[0], t[1]))
+    groups, current = [], [items[0]] if items else []
+    for it in items[1:]:
+        if current and abs(it[0] - current[-1][0]) <= tol:
+            current.append(it)
+        else:
+            groups.append(current)
+            current = [it]
+    groups.append(current)
+    return groups
+
+
+def _axis_groups(nums, axis, min_count=MIN_AXIS_COUNT, tol=LINE_TOL):
+    """Отбирает ряды чисел-осей.
+
+    axis='x' → горизонтальные ряды (общая y, значения растут по x);
+    axis='y' → вертикальные ряды (общая x, значения растут по y).
+    Критерии: >= min_count членов И строгая монотонность значений
+    (таблицы/размеры такого ряда не дают).
+    """
+    if axis == "x":
+        items = [(cy, cx, v) for cx, cy, v in nums]   # главная — y
+    else:
+        items = [(cx, cy, v) for cx, cy, v in nums]   # главная — x
+
+    result = []
+    for g in _group_lines(items, None, None, tol):
+        if len(g) < min_count:
+            continue
+        g = sorted(g, key=lambda t: t[1])             # по поперечной координате
+        values = [t[2] for t in g]
+        # Оси — это нумерация 1..N: значения маленькие и почти всегда растут.
+        # «Почти»: допускаем до 20% нарушений монотонности (посторонние числа
+        # вроде размера, попавшие в ту же линию).
+        if max(values) > 40:
+            continue
+        grow = sum(1 for i in range(len(values) - 1) if values[i] < values[i + 1])
+        pairs_cnt = len(values) - 1
+        if pairs_cnt and grow / pairs_cnt >= 0.8:
+            main_coord = round(sum(t[0] for t in g) / len(g), 1)
+            pairs = [(t[1], t[2]) for t in g]         # (координата, значение)
+            result.append((main_coord, pairs))
+    return result
+
+
+def find_number_rows(words, **kw):
+    """Горизонтальные ряды осей: [(y, [(x, value), ...]), ...]."""
+    nums = [(cx, cy, int(w)) for cx, cy, w in words if w.isdigit()]
+    return _axis_groups(nums, axis="x", **kw)
+
+
+def find_number_columns(words, **kw):
+    """Вертикальные ряды осей: [(x, [(y, value), ...]), ...]."""
+    nums = [(cx, cy, int(w)) for cx, cy, w in words if w.isdigit()]
+    return _axis_groups(nums, axis="y", **kw)
+
+
+def find_circled_axes(page, words):
+    """Цифровые оси: цифра, находящаяся ВНУТРИ векторного кружка.
+
+    Самый надёжный критерий — на чертеже ось всегда рисуется кружком
+    с числом внутри. Маркеры/размеры кружков не имеют.
+    """
+    circles = []
+    for d in page.get_drawings():
+        r = d["rect"]
+        w, h = r.width, r.height
+        # кружок осей: ~28 pt, почти правильная окружность
+        if 15 < w < 70 and 15 < h < 70 and abs(w - h) < w * 0.3:
+            circles.append(r)
+    if not circles:
+        return []
+
+    axes = []
+    for cx, cy, w in words:
+        if not w.isdigit():
+            continue
+        for r in circles:
+            if r.x0 <= cx <= r.x1 and r.y0 <= cy <= r.y1:
+                # центр кружка — точка привязки оси
+                axes.append((round((r.x0 + r.x1) / 2, 1),
+                             round((r.y0 + r.y1) / 2, 1), int(w),
+                             round(r.width, 1)))
+                break
+
+    # Группировка кружков в ряды: один диаметр, одна линия, монотонная
+    # нумерация и значения как у осей (1..N) — выноски размеров отсекаются.
+    axes.sort(key=lambda a: (a[3], a[1], a[0]))       # по диаметру, затем y, x
+    groups, cur = [], [axes[0]] if axes else []
+    for a in axes[1:]:
+        same_d = abs(a[3] - cur[-1][3]) < 3
+        same_line_y = abs(a[1] - cur[-1][1]) < 12
+        same_line_x = abs(a[0] - cur[-1][0]) < 12
+        if same_d and (same_line_y or same_line_x):
+            cur.append(a)
+        else:
+            groups.append(cur)
+            cur = [a]
+    groups.append(cur)
+
+    result = []
+    for g in groups:
+        if len(g) < 5:
+            continue
+        if max(a[2] for a in g) > 40:
+            continue
+        # монотонность вдоль линии (y для горизонтального ряда)
+        g = sorted(g, key=lambda a: a[0])
+        vals = [a[2] for a in g]
+        grow = sum(1 for i in range(len(vals) - 1) if vals[i] < vals[i + 1])
+        if len(vals) > 1 and grow / (len(vals) - 1) >= 0.8:
+            result.extend(g)
+    return sorted(result)
 
 
 def main():
     pdf_path = find_pdf()
-    print(f"🔎 ФАЗА 0: разведка координат — {pdf_path.name}\n")
+    print(f"🔎 ФАЗА 0 v2: структурный поиск осей — {pdf_path.name}\n")
 
     doc = fitz.open(pdf_path)
     for i, page in enumerate(doc, 1):
-        r = scan_page(page)
-        print(f"═══ Страница {i} | лист {r['page_size'][0]}×{r['page_size'][1]} pt "
-              f"| слов: {r['total_words']} ═══")
+        rect = page.rect
+        words = collect_words(page)
+        print(f"═══ Страница {i} | лист {rect.width:.0f}×{rect.height:.0f} pt "
+              f"| слов: {len(words)} ═══")
 
-        letters = cluster(r["letters_top"] + r["letters_bottom"])
-        digits = cluster(r["digits_left"] + r["digits_right"])
+        letters = sorted(find_axis_letters(words), key=lambda t: t[1])
+        print(f"\n  🔤 Буквенные оси: {len(letters)} (по Y, сверху вниз)")
+        for x, y, sym in letters:
+            print(f"     '{sym}'  x={x:7.1f}  y={y:7.1f}")
 
-        print(f"\n  🔤 Буквенные оси (кандидаты): {len(letters)} уникальных")
-        for x, y, sym, n in letters:
-            print(f"     '{sym}'  x={x:7.1f}  y={y:7.1f}  встреч={n}")
+        rows = find_number_rows(words)
+        print(f"\n  ➖ Горизонтальные ряды чисел-осей: {len(rows)}")
+        for y, pairs in rows:
+            vals = ", ".join(str(v) for _, v in pairs)
+            xs = ", ".join(f"{x:.0f}" for x, _ in pairs)
+            print(f"     y={y:7.1f}  осей: {len(pairs)}  значения: {vals}")
+            print(f"        x: {xs}")
 
-        print(f"\n  🔢 Цифровые оси (кандидаты): {len(digits)} уникальных")
-        for x, y, sym, n in digits:
-            print(f"     '{sym}'  x={x:7.1f}  y={y:7.1f}  встреч={n}")
+        cols = find_number_columns(words)
+        print(f"\n  ➕ Вертикальные ряды чисел-осей: {len(cols)}")
+        for x, pairs in cols:
+            vals = ", ".join(str(v) for _, v in pairs)
+            ys = ", ".join(f"{y:.0f}" for y, _ in pairs)
+            print(f"     x={x:7.1f}  осей: {len(pairs)}  значения: {vals}")
+            print(f"        y: {ys}")
 
-        nums = r["numbers"]
-        print(f"\n  📏 Числа-кандидаты в размеры: {len(nums)}")
-        if nums:
-            xs = [n[0] for n in nums]
-            ys = [n[1] for n in nums]
-            print(f"     X: {min(xs):.0f}..{max(xs):.0f}   Y: {min(ys):.0f}..{max(ys):.0f}")
-            in_field = [n for n in nums if not is_edge_zone(n[0], n[1],
-                        fitz.Rect(0, 0, *r["page_size"]))]
-            print(f"     внутри листа (не кромка): {len(in_field)}, на кромке: {len(nums) - len(in_field)}")
-            print(f"     примеры: {sorted({v for _, _, v in nums})[:20]}")
+        circled = find_circled_axes(page, words)
+        print(f"\n  ⭕ Оси в кружках (эталон): {len(circled)}")
+        for x, y, v, d in circled:
+            print(f"     ось {v:>2}  x={x:7.1f}  y={y:7.1f}  кружок d={d}")
 
-        print(f"\n  🏷 Ключевые слова: {len(r['keywords'])}")
-        for x, y, w in r["keywords"][:15]:
-            print(f"     '{w}'  x={x}  y={y}")
+        big = [(cx, cy, int(w)) for cx, cy, w in words if w.isdigit() and len(w) >= 3]
+        print(f"\n  📏 Трёхзначные+ числа (кандидаты в размеры): {len(big)}")
+        if big:
+            xs = [b[0] for b in big]
+            ys = [b[1] for b in big]
+            print(f"     X: {min(xs):.0f}..{max(xs):.0f}  Y: {min(ys):.0f}..{max(ys):.0f}")
+
+        kws = [(cx, cy, w) for cx, cy, w in words
+               if w.lower().strip(".,:;") in ("перегородка", "перегородки", "зашивка", "зашивки")]
+        print(f"\n  🏷 Слова 'перегородка/зашивка': {len(kws)}")
+        for x, y, w in kws[:10]:
+            print(f"     '{w}'  x={x:.1f}  y={y:.1f}")
         print()
 
 
