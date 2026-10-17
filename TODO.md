@@ -50,7 +50,7 @@
 
 ## 📌 TODO — ближайшее (dev-tools)
 
-- [ ] Тест на `extract_walls.parse_height()` / расчёт объёма (pytest).
+- [x] Тест на `extract_walls.parse_height()` / расчёт объёма (pytest) — ветка `feature/bim-estimate-tests` (25 тестов).
 - [ ] Убрать абсолютные пути из `bim-estimate-ai/*.py` (через `Path(__file__)` или аргументы CLI).
 - [ ] `requirements.txt` для `gantt-generator` (openpyxl) и общий CI-lint (ruff) на push.
 - [ ] README для `gantt-generator` (скриншот, установка, формат `tasks.json`).
