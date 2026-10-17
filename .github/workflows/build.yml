@@ -3,6 +3,10 @@ name: Build Windows EXE
 on:
   push:
     branches: [ main, feature/interactive-dates ]
+    paths: [ 'gantt-generator/**' ]
+  pull_request:
+    branches: [ main ]
+    paths: [ 'gantt-generator/**' ]
   workflow_dispatch:
 
 defaults:
