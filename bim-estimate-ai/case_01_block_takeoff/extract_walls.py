@@ -3,6 +3,16 @@ import re
 import sys
 import pandas as pd
 import os
+from pathlib import Path
+
+from spec_catalog import (
+    parse_spec_catalog,
+    print_catalog,
+    parse_selection,
+    ask_selection,
+    count_markers,
+    markers_by_catalog_id,
+)
 
 # ========================= Константы (единый источник правды) =========================
 DEFAULT_HEIGHT = 2.80          # высота стен по умолчанию, м
@@ -63,11 +73,17 @@ def calc_volumes(length_m, thickness=THICKNESS, height=DEFAULT_HEIGHT, waste_fac
 
 
 def build_report(type1_lengths, type2_lengths, height,
-                 thickness=THICKNESS, waste_factor=WASTE_FACTOR):
-    """Собирает ВСЕ расчётные значения по каждому типу наружной стены.
+                 thickness=THICKNESS, waste_factor=WASTE_FACTOR,
+                 chosen_labels=None):
+    """Собирает ВСЕ расчётные значения по каждому типу стены.
 
     Возвращает список dict-строк (по одной на тип) с полным набором величин:
     длина, площадь кладки, чистый объём, запас, объём с запасом.
+
+    chosen_labels — метки каталога («Перегородка Тип 4»), выбранные
+    пользователем. Пока расчёт геометрии покрывает только наружные стены
+    (split_by_type), поэтому метки фиксируются в строке Vybrano_dlya_rascheta;
+    полный расчёт по перегородкам — следующий шаг (Фаза 1: snap_to_axes).
     """
     rows = []
     for name, lengths in (
@@ -90,6 +106,7 @@ def build_report(type1_lengths, type2_lengths, height,
             "Waste_factor": waste_factor,
             "Zapas_m3": round(waste_vol - pure_vol, 2),
             "Volume_with_waste_m3": round(waste_vol, 2),
+            "Vybrano_dlya_rascheta": "; ".join(chosen_labels) if chosen_labels else "",
         })
     return rows
 
@@ -137,18 +154,76 @@ def print_report(rows, type1_lengths, type2_lengths, height):
     print("=======================================================")
 
 
-def professional_split_takeoff(pdf_path, output_csv):
+def parse_cli_args(argv):
+    """CLI-флаги: --types 3,5 --height 2.8 --all. Без флагов → интерактив."""
+    types_raw, height_raw, all_flag = None, None, False
+    args = list(argv)
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--types" and i + 1 < len(args):
+            types_raw = args[i + 1]
+            i += 2
+        elif a.startswith("--types="):
+            types_raw = a.split("=", 1)[1]
+            i += 1
+        elif a == "--height" and i + 1 < len(args):
+            height_raw = args[i + 1]
+            i += 2
+        elif a.startswith("--height="):
+            height_raw = a.split("=", 1)[1]
+            i += 1
+        elif a in ("--all", "-a"):
+            all_flag = True
+            i += 1
+        else:
+            i += 1
+    return types_raw, height_raw, all_flag
+
+
+def professional_split_takeoff(pdf_path, output_csv, types_raw=None,
+                               height_raw=None, select_all=False):
     print("\n=======================================================")
     print("🚀 Запуск универсального инженерного калькулятора стен")
     print("=======================================================")
 
-    # Интерактивный ввод высоты стен от пользователя
-    height = ask_height()
+    doc = fitz.open(pdf_path)
+
+    # --- Каталог конструкций из экспликации ---
+    full_text = "\n".join(page.get_text() for page in doc)
+    catalog = parse_spec_catalog(full_text)
+    if not catalog:
+        print("❌ В текстовом слое не найдена экспликация (разделы 'Наружная стена/Перегородки').")
+        print("   Расчёт невозможен — проверьте PDF.")
+        return
+    words = []
+    for page in doc:
+        words += [((x0 + x1) / 2, (y0 + y1) / 2, w)
+                  for x0, y0, x1, y1, w, *_ in page.get_text("words")]
+    markers = markers_by_catalog_id(catalog, count_markers(words))
+    print_catalog(catalog, markers)
+
+    # --- Выбор «что считаем» ---
+    if types_raw is not None:
+        picked = parse_selection(types_raw, len(catalog))
+    elif select_all:
+        picked = list(range(len(catalog)))
+    else:
+        picked = ask_selection(len(catalog))
+    if not picked:
+        print("   ⚠️ Ничего не выбрано — считаю все типы.")
+        picked = list(range(len(catalog)))
+    chosen = [catalog[i] for i in picked]
+    print(f"\n✅ Выбрано: {', '.join(c['label'] for c in chosen)}\n")
+
+    # --- Высота ---
+    if height_raw is not None:
+        height = parse_height(height_raw)
+    else:
+        height = ask_height()
 
     print(f"\n📐 Расчет будет произведен для высоты стен: {height:.2f} м\n")
     print("⏳ Сканирование и анализ страниц чертежа...")
-
-    doc = fitz.open(pdf_path)
 
     all_sizes = []
     for page in doc:
@@ -157,7 +232,8 @@ def professional_split_takeoff(pdf_path, output_csv):
     type1_lengths, type2_lengths = split_by_type(all_sizes)
 
     # Все расчётные значения в одной структуре
-    rows = build_report(type1_lengths, type2_lengths, height)
+    rows = build_report(type1_lengths, type2_lengths, height,
+                        chosen_labels=[c["label"] for c in chosen])
 
     # Подробный консольный отчёт
     print_report(rows, type1_lengths, type2_lengths, height)
@@ -171,14 +247,17 @@ def professional_split_takeoff(pdf_path, output_csv):
 
 if __name__ == "__main__":
     # Пути строятся от расположения файла — без абсолютных захардкоженных путей
-    from pathlib import Path
-
     data_dir = Path(__file__).resolve().parent / "data"
     output_csv = data_dir / "estimated_materials.csv"
 
-    # PDF: аргумент CLI (python extract_walls.py путь/к/файлу.pdf) или первый *.pdf в data/
-    if len(sys.argv) > 1:
-        pdf_path = Path(sys.argv[1]).expanduser()
+    # CLI-флаги --types/--height/--all; первый непознанный аргумент = путь к PDF
+    types_raw, height_raw, select_all = parse_cli_args(sys.argv[1:])
+
+    # PDF: явный путь-позиционный аргумент или первый *.pdf в data/
+    positional = [a for a in sys.argv[1:]
+                  if not a.startswith("--") and a != types_raw and a != height_raw]
+    if positional:
+        pdf_path = Path(positional[0]).expanduser()
     else:
         pdfs = sorted(data_dir.glob("*.pdf")) if data_dir.exists() else []
         if not pdfs:
@@ -186,5 +265,9 @@ if __name__ == "__main__":
             print("   Положите PDF в эту папку или укажите путь аргументом: python extract_walls.py /path/to/drawing.pdf")
             sys.exit(1)
         pdf_path = pdfs[0]
+    if len(sorted(data_dir.glob("*.pdf"))) > 1 and not positional:
+        print(f"⚠️ В {data_dir} несколько PDF — беру первый: {pdf_path.name}")
 
-    professional_split_takeoff(str(pdf_path), str(output_csv))
+    professional_split_takeoff(str(pdf_path), str(output_csv),
+                               types_raw=types_raw, height_raw=height_raw,
+                               select_all=select_all)
