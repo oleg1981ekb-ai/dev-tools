@@ -1,0 +1,17 @@
+# Секреты — никогда не коммитить!
+.env
+
+# Конфиденциальные данные проекта (чертежи клиентов)
+case_01_block_takeoff/data/*.pdf
+case_01_block_takeoff/raw_extracted_text.txt
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Системные и временные файлы
+.DS_Store
+temp.zip
+*.zip
