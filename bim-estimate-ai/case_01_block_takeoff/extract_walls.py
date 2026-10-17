@@ -62,6 +62,38 @@ def calc_volumes(length_m, thickness=THICKNESS, height=DEFAULT_HEIGHT, waste_fac
     return pure, pure * waste_factor
 
 
+def build_report(type1_lengths, type2_lengths, height,
+                 thickness=THICKNESS, waste_factor=WASTE_FACTOR):
+    """Собирает ВСЕ расчётные значения по каждому типу наружной стены.
+
+    Возвращает список dict-строк (по одной на тип) с полным набором величин:
+    длина, площадь кладки, чистый объём, запас, объём с запасом.
+    """
+    rows = []
+    for name, lengths in (
+        ("Narus_Stena_Tip_1", type1_lengths),
+        ("Narus_Stena_Tip_2", type2_lengths),
+    ):
+        length_m = sum(lengths)
+        area_m2 = length_m * height                       # площадь кладки, м²
+        pure_vol = length_m * thickness * height          # чистый объём, м³
+        waste_vol = pure_vol * waste_factor               # объём с запасом, м³
+        rows.append({
+            "Konstrukciya": name,
+            "Material": "Gazosilikat_200mm",
+            "Tolshina_m": round(thickness, 2),
+            "Vysota_m": round(height, 2),
+            "Kolichestvo_razmerov": len(lengths),
+            "Dlina_m": round(length_m, 2),
+            "Ploshad_m2": round(area_m2, 2),
+            "Volume_m3": round(pure_vol, 2),
+            "Waste_factor": waste_factor,
+            "Zapas_m3": round(waste_vol - pure_vol, 2),
+            "Volume_with_waste_m3": round(waste_vol, 2),
+        })
+    return rows
+
+
 # ========================= Основной сценарий (ввод/вывод/файлы) =========================
 
 def ask_height():
@@ -76,6 +108,33 @@ def ask_height():
     except ValueError:
         print(f"❌ Ошибка: Введено некорректное число. Используется высота по умолчанию: {DEFAULT_HEIGHT} м")
         return DEFAULT_HEIGHT
+
+
+def print_report(rows, type1_lengths, type2_lengths, height):
+    """Выводит ВСЕ расчётные значения подробным отчётом в консоль."""
+    print("=======================================================")
+    print(f"📋 ПОЛНЫЙ ОТЧЕТ РАСЧЕТА (высота {height:.2f} м, блок {THICKNESS * 1000:.0f} мм)")
+    print("=======================================================")
+
+    for row, lengths in ((rows[0], type1_lengths), (rows[1], type2_lengths)):
+        label = "ТИП 1 (Заполнение)" if row["Konstrukciya"].endswith("1") else "ТИП 2 (У несущих осей)"
+        print(f"\n🧱 {label}")
+        print(f"   Найдено размеров:        {row['Kolichestvo_razmerov']}")
+        print(f"   Размеры (мм):            {', '.join(f'{l * 1000:.0f}' for l in sorted(lengths)) or '—'}")
+        print(f"   Суммарная длина:         {row['Dlina_m']:.2f} м")
+        print(f"   Площадь кладки:          {row['Ploshad_m2']:.2f} м²")
+        print(f"   Толщина блока:           {row['Tolshina_m'] * 1000:.0f} мм")
+        print(f"   Чистый объём:            {row['Volume_m3']:.2f} м³")
+        print(f"   Запас ({WASTE_FACTOR - 1:.0%}):               {row['Zapas_m3']:.2f} м³")
+        print(f"   Объём с запасом:         {row['Volume_with_waste_m3']:.2f} м³")
+
+    t1, t2 = rows[0], rows[1]
+    print("\n───────────────────────────────────────────────────────")
+    print(f"   ИТОГО длина:             {t1['Dlina_m'] + t2['Dlina_m']:.2f} м")
+    print(f"   ИТОГО площадь:           {t1['Ploshad_m2'] + t2['Ploshad_m2']:.2f} м²")
+    print(f"   ИТОГО чистый объём:      {t1['Volume_m3'] + t2['Volume_m3']:.2f} м³")
+    print(f"   ИТОГО с запасом:         {t1['Volume_with_waste_m3'] + t2['Volume_with_waste_m3']:.2f} м³")
+    print("=======================================================")
 
 
 def professional_split_takeoff(pdf_path, output_csv):
@@ -97,29 +156,17 @@ def professional_split_takeoff(pdf_path, output_csv):
 
     type1_lengths, type2_lengths = split_by_type(all_sizes)
 
-    t1_len = sum(type1_lengths)
-    t1_pure_vol, t1_waste_vol = calc_volumes(t1_len, height=height)
+    # Все расчётные значения в одной структуре
+    rows = build_report(type1_lengths, type2_lengths, height)
 
-    t2_len = sum(type2_lengths)
-    t2_pure_vol, t2_waste_vol = calc_volumes(t2_len, height=height)
+    # Подробный консольный отчёт
+    print_report(rows, type1_lengths, type2_lengths, height)
 
-    data = {
-        "Konstrukciya": ["Narus_Stena_Tip_1", "Narus_Stena_Tip_2"],
-        "Material": ["Gazosilikat_200mm", "Gazosilikat_200mm"],
-        "Vysota_m": [f"{height:.2f}", f"{height:.2f}"],
-        "Dlina_m": [f"{t1_len:.2f}", f"{t2_len:.2f}"],
-        "Volume_m3": [f"{t1_pure_vol:.2f}", f"{t2_pure_vol:.2f}"],
-        "Volume_with_waste_m3": [f"{t1_waste_vol:.2f}", f"{t2_waste_vol:.2f}"]
-    }
-
-    df = pd.DataFrame(data)
+    # CSV со всеми столбцами
+    df = pd.DataFrame(rows)
     df.to_csv(output_csv, index=False, encoding='utf-8')
 
-    print("=======================================================")
-    print("✅ ИНЖЕНЕРНЫЙ РАСЧЕТ ГЕОМЕТРИИ ЗАВЕРШЕН!")
-    print(f"🧱 ТИП 1 (Заполнение): Длина {t1_len:.2f} м | Объем с запасом: {t1_waste_vol:.2f} м³")
-    print(f"🏗 ТИП 2 (У несущих осей): Длина {t2_len:.2f} м | Объем с запасом: {t2_waste_vol:.2f} м³")
-    print(f"📊 Итоговая точная ведомость сохранена в CSV!")
+    print(f"📊 Итоговая ведомость со всеми расчётными значениями сохранена: {output_csv}")
     print("=======================================================")
 
 if __name__ == "__main__":
