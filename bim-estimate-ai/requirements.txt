@@ -1,3 +1,4 @@
 PyMuPDF>=1.28
 pandas>=2.0
 groq>=1.0
+pytest>=8.0
