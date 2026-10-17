@@ -28,18 +28,25 @@ SPEC_SAMPLE = """
 def test_sections_do_not_mix():
     items = parse_spec_catalog(SPEC_SAMPLE)
     ids = {it["id"] for it in items}
+    # Тип 1 — один слой (газоблок), остаётся одной позицией
     assert "Наружная стена|Тип 1" in ids
-    assert "Наружная стена|Тип 2" in ids
+    # Тип 2 — два слоя (монолит + газоблок), разбивается на позиции-слои
+    assert "Наружная стена|Тип 2|слой 1" in ids  # монолит
+    assert "Наружная стена|Тип 2|слой 2" in ids  # газоблок
     assert "Перегородка|Тип 1" in ids
     assert "Перегородка|Тип 2" in ids
     assert "Перегородка|Тип 4" in ids
-    assert len(items) == 5
+    # 1 (Тип1) + 2 (Тип2 слои) + 3 (перегородки) = 6 позиций
+    assert len(items) == 6
 
 
 def test_multiline_description_joins_thickness():
     # описание Типа 2 наружных стен идёт на 2 строках — толщина 200 должна найтись
     items = {it["id"]: it for it in parse_spec_catalog(SPEC_SAMPLE)}
-    assert items["Наружная стена|Тип 2"]["thickness_mm"] == 200
+    # Тип 2 разбился на слои: слой 1 — монолит (без толщины), слой 2 — газоблок 200 мм
+    t2_gas = items["Наружная стена|Тип 2|слой 2"]
+    assert t2_gas["thickness_mm"] == 200
+    assert t2_gas["countable"] is True
     assert items["Перегородка|Тип 1"]["thickness_mm"] == 125
     assert items["Перегородка|Тип 4"]["thickness_mm"] == 75
 
@@ -60,11 +67,25 @@ def test_multilayer_wall_material_from_structural_layer():
         "- Газосиликатные блоки толщиной 200мм ГОСТ 31359-2007\n"
     )
     items = {it["id"]: it for it in parse_spec_catalog(sample)}
-    it = items["Наружная стена|Тип 1"]
-    assert it["thickness_mm"] == 200
-    assert "Газосиликатные блоки" in it["material"]
-    assert "композитные" not in it["material"]
-    assert "Утеплитель" not in it["material"]
+    # 3 слоя → 3 отдельные позиции
+    assert "Наружная стена|Тип 1|слой 1" in items  # фасад
+    assert "Наружная стена|Тип 1|слой 2" in items  # утеплитель
+    assert "Наружная стена|Тип 1|слой 3" in items  # газоблок
+
+    facade = items["Наружная стена|Тип 1|слой 1"]
+    assert "композитные" in facade["material"]
+    assert facade["thickness_mm"] is None
+    assert facade["countable"] is False
+
+    insulation = items["Наружная стена|Тип 1|слой 2"]
+    assert "Утеплитель" in insulation["material"]
+    assert insulation["thickness_mm"] == 80
+    assert insulation["countable"] is False
+
+    gas = items["Наружная стена|Тип 1|слой 3"]
+    assert "Газосиликатные блоки" in gas["material"]
+    assert gas["thickness_mm"] == 200
+    assert gas["countable"] is True
 
 
 def test_same_thickness_layers_joined():
@@ -76,13 +97,19 @@ def test_same_thickness_layers_joined():
         "- газосиликатные блоки толщиной 200мм\n"
     )
     items = {it["id"]: it for it in parse_spec_catalog(sample)}
-    it = items["Наружная стена|Тип 2"]
-    assert it["thickness_mm"] == 200
-    assert "газосиликатные блоки" in it["material"]
-    assert "монолит" not in it["material"].lower()
-    mono = [L for L in it["layers"] if "монолит" in L["material"].lower()][0]
+    # 2 слоя → 2 отдельные позиции
+    assert "Наружная стена|Тип 2|слой 1" in items  # монолит
+    assert "Наружная стена|Тип 2|слой 2" in items  # газоблок
+
+    mono = items["Наружная стена|Тип 2|слой 1"]
+    assert "монолит" in mono["material"].lower()
     assert mono["thickness_mm"] is None
     assert mono["countable"] is False
+
+    gas = items["Наружная стена|Тип 2|слой 2"]
+    assert "газосиликатные блоки" in gas["material"]
+    assert gas["thickness_mm"] == 200
+    assert gas["countable"] is True
 
 
 def test_duplicates_collapse():
@@ -121,9 +148,9 @@ def test_count_markers_pairs_tip_with_number():
 
 
 def test_markers_ambiguous_type_splits_with_mark():
-    items = [{"id": "Наружная стена|Тип 2", "type_no": 2},
-             {"id": "Перегородка|Тип 2", "type_no": 2},
-             {"id": "Перегородка|Тип 3", "type_no": 3}]
+    items = [{"id": "Наружная стена|Тип 2", "type_no": 2, "countable": True},
+             {"id": "Перегородка|Тип 2", "type_no": 2, "countable": True},
+             {"id": "Перегородка|Тип 3", "type_no": 3, "countable": True}]
     out = markers_by_catalog_id(items, {2: 6, 3: 8})
     assert out["Перегородка|Тип 3"] == 8
     assert out["Наружная стена|Тип 2"].endswith("?")
@@ -188,7 +215,8 @@ def test_inner_walls_from_stray_type2_layers():
 
 
 def test_fixup_outer_type2_not_triggered_without_inner_section():
-    """Без раздела «Внутренние стены» слои Типа 2 не отщепляются."""
+    """Без раздела «Внутренние стены» слои Типа 2 не отщепляются во внутренние стены,
+    но сам тип всё равно разбивается на отдельные позицию-слои."""
     sample = (
         "Наружная стена Тип 2:\n"
         "- монолитный железобетон 200 мм\n"
@@ -196,8 +224,11 @@ def test_fixup_outer_type2_not_triggered_without_inner_section():
     )
     items = {it["id"]: it for it in parse_spec_catalog(sample)}
     assert "Внутренняя стена|1" not in items
-    t2 = items["Наружная стена|Тип 2"]
-    assert "газосиликатные блоки" in t2["material"]
+    # Тип 2 разбился на слои, газоблок — отдельная позиция-слой
+    assert "Наружная стена|Тип 2|слой 2" in items
+    gas = items["Наружная стена|Тип 2|слой 2"]
+    assert "газосиликатные блоки" in gas["material"]
+    assert gas["thickness_mm"] == 200
 
 
 def test_inner_wall_countable_gas_concrete():

@@ -73,31 +73,36 @@ def calc_volumes(length_m, thickness=THICKNESS, height=DEFAULT_HEIGHT, waste_fac
 
 
 def build_report(type1_lengths, type2_lengths, height,
-                 thickness=THICKNESS, waste_factor=WASTE_FACTOR,
-                 chosen_labels=None):
+                 thickness=THICKNESS, thickness1=None, thickness2=None,
+                 waste_factor=WASTE_FACTOR, chosen_labels=None):
     """Собирает ВСЕ расчётные значения по каждому типу стены.
 
     Возвращает список dict-строк (по одной на тип) с полным набором величин:
     длина, площадь кладки, чистый объём, запас, объём с запасом.
+
+    thickness1 / thickness2 — толщина по счётному слою каталога (м).
+    Если не переданы, используется общий параметр thickness (обратная совместимость).
 
     chosen_labels — метки каталога («Перегородка Тип 4»), выбранные
     пользователем. Пока расчёт геометрии покрывает только наружные стены
     (split_by_type), поэтому метки фиксируются в строке Vybrano_dlya_rascheta;
     полный расчёт по перегородкам — следующий шаг (Фаза 1: snap_to_axes).
     """
+    t1 = thickness1 if thickness1 is not None else thickness
+    t2 = thickness2 if thickness2 is not None else thickness
     rows = []
-    for name, lengths in (
-        ("Narus_Stena_Tip_1", type1_lengths),
-        ("Narus_Stena_Tip_2", type2_lengths),
+    for name, lengths, thick in (
+        ("Narus_Stena_Tip_1", type1_lengths, t1),
+        ("Narus_Stena_Tip_2", type2_lengths, t2),
     ):
         length_m = sum(lengths)
         area_m2 = length_m * height                       # площадь кладки, м²
-        pure_vol = length_m * thickness * height          # чистый объём, м³
+        pure_vol = length_m * thick * height              # чистый объём, м³
         waste_vol = pure_vol * waste_factor               # объём с запасом, м³
         rows.append({
             "Konstrukciya": name,
             "Material": "Gazosilikat_200mm",
-            "Tolshina_m": round(thickness, 2),
+            "Tolshina_m": round(thick, 2),
             "Vysota_m": round(height, 2),
             "Kolichestvo_razmerov": len(lengths),
             "Dlina_m": round(length_m, 2),
@@ -216,6 +221,16 @@ def professional_split_takeoff(pdf_path, output_csv, types_raw=None,
     chosen = [catalog[i] for i in picked]
     print(f"\n✅ Выбрано: {', '.join(c['label'] for c in chosen)}\n")
 
+    # --- Толщина по счётным слоям каталога ---
+    # Берём толщину из первого счётного слоя (countable=True) для каждого типа.
+    # Если счётный слой не выбран — используется константа THICKNESS (0.20 м).
+    thickness_by_type = {}
+    for c in chosen:
+        if c.get("countable") and c.get("thickness_mm"):
+            thickness_by_type[c["type_no"]] = c["thickness_mm"] / 1000.0
+    type1_thickness = thickness_by_type.get(1, THICKNESS)
+    type2_thickness = thickness_by_type.get(2, THICKNESS)
+
     # --- Высота ---
     if height_raw is not None:
         height = parse_height(height_raw)
@@ -233,6 +248,7 @@ def professional_split_takeoff(pdf_path, output_csv, types_raw=None,
 
     # Все расчётные значения в одной структуре
     rows = build_report(type1_lengths, type2_lengths, height,
+                        thickness1=type1_thickness, thickness2=type2_thickness,
                         chosen_labels=[c["label"] for c in chosen])
 
     # Подробный консольный отчёт

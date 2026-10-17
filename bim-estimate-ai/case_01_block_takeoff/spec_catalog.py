@@ -236,6 +236,46 @@ def _fixup_outer_type2(items):
     return out
 
 
+def _make_layer_item(item_id, section, type_no, label, layer, layer_index):
+    """Создаёт отдельную позицию для одного слоя многослойной стены.
+
+    По образцу _make_inner_item: каждая позиция — propia запись каталога
+    со своим id, материалом, толщиной и флагом countable.
+    """
+    thick = layer["thickness_mm"]
+    mat = layer["material"] or ""
+    return {
+        "id": f"{item_id}|слой {layer_index}",
+        "section": section,
+        "type_no": type_no,
+        "label": f"{label}: {mat[:40]}" if mat else f"{label}: слой {layer_index}",
+        "material": mat,
+        "thickness_mm": thick,
+        "desc": mat,
+        "layers": [layer],
+        "countable": layer["countable"],
+    }
+
+
+def _split_layers_into_positions(items):
+    """Заменяет каждую многослойную запись на отдельные позиции-слои.
+
+    Однослойные типы (перегородки) остаются без изменений — их id не меняется.
+    Многослойные (наружные стены) распадаются на позиции:
+    «Наружная стена|Тип 1|слой 1», «Наружная стена|Тип 1|слой 2», …
+    """
+    out = []
+    for it in items:
+        layers = it.get("layers") or []
+        if len(layers) <= 1:
+            out.append(it)
+            continue
+        for i, layer in enumerate(layers, 1):
+            out.append(_make_layer_item(it["id"], it["section"], it["type_no"],
+                                        it["label"], layer, i))
+    return out
+
+
 def parse_spec_catalog(text):
     """Текстовый слой PDF → список записей каталога.
 
@@ -302,6 +342,8 @@ def parse_spec_catalog(text):
     has_inner_section = any(it["section"] == "Внутренняя стена" for it in items)
     if has_inner_section:
         items = _fixup_outer_type2(items)
+    # Разбить многослойные типы на отдельные позицию-слои
+    items = _split_layers_into_positions(items)
     return items
 
 
@@ -368,12 +410,15 @@ def markers_by_catalog_id(items, counts):
     Номер типа может встречаться в нескольких разделах («Тип 1» у наружных
     стен и у перегородок): счётчик делится поровну с пометкой — точное
     распределение требует привязки по координатам (Фаза 1, snap_to_axes).
+    Маркеры назначаются только счётным (countable) слоям — информационные
+    слои (фасад, утеплитель, монолит) не получают маркеров.
     Возвращает {id: count | '~N (неоднозначно)'}.
     """
     from collections import defaultdict
     by_no = defaultdict(list)
     for it in items:
-        by_no[it["type_no"]].append(it["id"])
+        if it.get("countable") and it.get("type_no") is not None:
+            by_no[it["type_no"]].append(it["id"])
     out = {}
     for type_no, n in counts.items():
         ids = by_no.get(type_no, [])
@@ -398,7 +443,7 @@ def print_catalog(items, markers=None):
     for i, it in enumerate(items, 1):
         thick = f"{it['thickness_mm']} мм" if it["thickness_mm"] else "—"
         mat = (it["material"] or "—")[:mat_w]
-        n = markers.get(it["id"], "—")
+        n = markers.get(it["id"], "—") if it.get("countable") else "—"
         print(f" {i:>2}  {it['label']:<{label_w}}  {mat:<{mat_w}}  {thick:<9} {n}")
     print("─" * (6 + label_w + mat_w + 22))
 
