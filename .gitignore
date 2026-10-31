@@ -7,7 +7,22 @@
 # Python
 .venv/
 __pycache__/
-*.pyc
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Секреты
+.env
+.env.*
+!.env.example
+
+# Клиентские документы и сгенерированные артефакты
+*.pdf
+*.xlsx
+*.csv
+dist/
+build/
+*.spec
 
 # Archives
 temp.zip
