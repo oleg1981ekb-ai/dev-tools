@@ -20,7 +20,7 @@
 | `gantt-generator/` | Генератор графиков Ганта → Excel (`tasks.json` → `.xlsx`) | Продукт, CI собирает Windows EXE |
 | `bim-estimate-ai/` | AI-расчёт сметы кладки из PDF-чертежа (PyMuPDF + Groq / regex) | PoC, см. его README |
 | `pdf-table-extractor/` | Извлечение таблиц из PDF → Excel (`camelot`) | Утилита |
-| `PDF_Excel_compare/` | Сравнение PDF и Excel (новый проект) | Старт, папка пуста |
+| `PDF_Excel_compare/` | Сравнение таблиц PDF и Excel, Excel-отчёт о расхождениях | В разработке |
 | `docs/adr/` | Архитектурные решения (ADR), индекс — `docs/adr/README.md` | — |
 | `.github/workflows/build.yml` | CI сборки EXE генератора | — |
 

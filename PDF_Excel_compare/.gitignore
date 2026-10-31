@@ -1,0 +1,15 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Клиентские данные и результаты сравнения
+source.xlsx
+printed.pdf
+differences_report.xlsx
+data/
+*.pdf
+*.xlsx
+*.csv
