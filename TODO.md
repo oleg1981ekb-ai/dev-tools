@@ -18,6 +18,7 @@
 | Графики (Ганта → Excel) | `gantt-generator/` | Продукт, CI собирает Windows EXE | `feature/interactive-tasks` |
 | Расчёты по чертежам (PDF → смета) | `bim-estimate-ai/` | PoC | — |
 | Общая утилита PDF → Excel | `pdf-table-extractor/` | Утилита | — |
+| Сравнение PDF и Excel | `PDF_Excel_compare/` | Новый проект | `feature/pdf-excel-compare` |
 
 **Принятые правила (закреплены):**
 - Секреты (`.env`, `GROQ_API_KEY`) и клиентские PDF/чертежи — **никогда** в git
@@ -51,6 +52,26 @@
 - [x] PR #5 (Фаза 0 v2: сканер кружков осей) доведён до мержа; ось «1» не в кружках —
       это нормально для чертежа (первая ось без окружности), source='row', conf='medium';
       ветка feature/bim-estimate-axes удалена по правилу 9.
+
+## 📌 TODO — сейчас (PDF_Excel_compare, ветка feature/pdf-excel-compare)
+
+- [x] Каркас проекта: `main.py`, `requirements.txt`, `README.md`, `.gitignore`, `tests/`.
+- [x] Модели данных (`TableData`, `Difference`, `ComparisonResult`) и нормализация
+      текста/чисел (Decimal, tolerance, пробелы, запятые, минусы).
+- [x] Чтение Excel (один лист) и PDF (все страницы, повтор шапки, рваные строки).
+- [x] Сопоставление колонок (exact → fuzzy → positional) и строк по порядку.
+- [x] Отчёт `differences_report.xlsx`: `Summary`, `Differences`, `Columns`,
+      `Only in Excel/PDF`.
+- [x] CLI с путями от `Path(__file__)`, параметрами
+      `--excel/--pdf/--report/--sheet/--abs-tolerance/--rel-tolerance`.
+- [x] Тесты: нормализация, числа, колонки, строки, отчёт, PDF-парсер на mock-страницах.
+- [x] CI `.github/workflows/pdf-excel-compare.yml` с фильтром `paths`.
+- [x] Задел под формат ГрандСметы: интерфейс reader → `TableData`.
+- [x] README: установка, запуск, ограничения, формат отчёта.
+- [x] Обновлены `CHANGELOG.md` (корень и проект) и ADR-0004.
+- [ ] Проверить на реальных `source.xlsx` и `printed.pdf` (до 50 страниц).
+- [ ] Reader формата ГрандСметы и режим сопоставления по ключевым колонкам
+      (следующий этап, после проверки на реальных файлах).
 
 ## 📌 TODO — сейчас (ветка feature/interactive-tasks)
 
