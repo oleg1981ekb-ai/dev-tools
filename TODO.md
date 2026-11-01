@@ -18,7 +18,7 @@
 | Графики (Ганта → Excel) | `gantt-generator/` | Продукт, CI собирает Windows EXE | `feature/interactive-tasks` |
 | Расчёты по чертежам (PDF → смета) | `bim-estimate-ai/` | PoC | — |
 | Общая утилита PDF → Excel | `pdf-table-extractor/` | Утилита | — |
-| Сравнение PDF и Excel | `PDF_Excel_compare/` | Новый проект | `feature/pdf-excel-compare` |
+| Сравнение PDF и Excel | `PDF_Excel_compare/` | Завершён | — |
 
 **Принятые правила (закреплены):**
 - Секреты (`.env`, `GROQ_API_KEY`) и клиентские PDF/чертежи — **никогда** в git
@@ -53,7 +53,7 @@
       это нормально для чертежа (первая ось без окружности), source='row', conf='medium';
       ветка feature/bim-estimate-axes удалена по правилу 9.
 
-## 📌 TODO — сейчас (PDF_Excel_compare, ветка feature/pdf-excel-compare)
+## 📌 TODO — сейчас (PDF_Excel_compare — основная работа завершена, новые задачи в feature/pdf-ocr-fallback)
 
 - [x] Каркас проекта: `main.py`, `requirements.txt`, `README.md`, `.gitignore`, `tests/`.
 - [x] Модели данных (`TableData`, `Difference`, `ComparisonResult`) и нормализация
@@ -81,6 +81,32 @@
 - [ ] Заменить тестовые `tasks.json` реальным графиком перед мержем в `main`
       (см. «Исторический хвост» выше).
 - [ ] Открыть PR `feature/interactive-tasks` → `main` после завершения работ.
+
+## 📌 TODO — сейчас (ветка feature/pdf-ocr-fallback)
+
+- [ ] **Спринт 1: PaddleOCR fallback для печатного текста** (ветка `feature/pdf-ocr-fallback`)
+  - [x] Ветка создана от `main` (обсуждение плана)
+  - [ ] Добавить флаг `--ocr` в `main.py`: `none` / `paddle` / `full` (по умолчанию `none`)
+  - [ ] Добавить зависимости `paddlepaddle>=3.0,<4`, `paddleocr>=2.0,<3` в `requirements.txt`
+  - [ ] Интеграция PaddleOCR (русская модель `ru_PP-OCRv3`) в `compare/pdf_reader.py`
+        как fallback: если `pdfplumber` вернул пустую или неверную ячейку → OCR на соответствующей области
+  - [ ] Поля в `ComparisonResult` / `Difference`: `source='paddle'`, `ocr_confidence=0.0-1.0`, `is_handwritten=false`
+  - [ ] Unit-тест: mock-страница с известным текстом, проверка что PaddleOCR подставляет текст
+        для пустых ячеек `pdfplumber`
+  - [ ] Проверка на 50 страницах `source.xlsx` + `printed.pdf`: время выполнения < 30 сек
+  - [ ] Обновить `CHANGELOG.md` (PDF_Excel_compare, раздел `Unreleased`)
+  - [ ] Тесты: `pytest -q` зелёный
+  - [ ] PR создан, вопрос на слияние в `main` (согласие пользователя)
+
+- [ ] **Спринт 2: Handwriting OCR зоны диффа** (следующий спринт, не сейчас)
+  - ...
+
+
+- [ ] **Инкремент в UI отчёта**
+  - Добавить колонку `Источник OCR` в Differences sheet
+  - Цветовое кодирование: PaddleOCR (желтый), Handwriting OCR (розовый)
+  - DataBar для confidence score
+  - Обновить `AGENTS.md` и `DoD` про `todowrite` и подтверждение PR (уже сделано)
 
 ## 📌 TODO — ближайшее (bim-estimate-ai, ветка feature/bim-estimate-axes, PR #5 OPEN)
 
