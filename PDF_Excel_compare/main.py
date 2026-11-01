@@ -81,6 +81,13 @@ def build_parser() -> argparse.ArgumentParser:
         type=_decimal,
         help="Относительный допуск для чисел (по умолчанию 1e-6).",
     )
+    parser.add_argument(
+        "--ocr",
+        default="none",
+        type=_sheet,
+        help="Режим OCR: none (по умолчанию) / paddle / full. "
+             "Включает распознавание текста в PDF для сравнения с Excel.",
+    )
     return parser
 
 

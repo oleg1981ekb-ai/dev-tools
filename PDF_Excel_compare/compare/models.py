@@ -62,6 +62,10 @@ class Difference:
     value_excel: Any = None
     value_pdf: Any = None
     comment: str = ""
+    # OCR metadata
+    source: str = "pdfplumber"
+    ocr_confidence: float | None = None
+    is_handwritten: bool = False
 
 
 @dataclass
